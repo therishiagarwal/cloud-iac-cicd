@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+
+# Env and creds
+.env
+*.pem
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+terraform.tfstate
+terraform.tfstate.*
+crash.log
+
+# Docker
+*.log
+
+# Jenkins
+jenkins_home/
+
+# OS
+.DS_Store
+Thumbs.db
