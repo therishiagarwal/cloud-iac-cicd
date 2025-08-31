@@ -15,21 +15,19 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps {
-        checkout scm
-      }
-    }
-
-    stage('Unit Test') {
-      steps {
-        // Run Python syntax check inside a Docker container so we do not need Python on Jenkins
-        sh 'docker run --rm -v "$PWD/app":/app -w /app python:3.11-slim python -m py_compile server.py'
-      }
+      steps { checkout scm }
     }
 
     stage('Build Docker') {
       steps {
         sh 'docker build -t $APP_NAME:ci ./app'
+      }
+    }
+
+    stage('Unit Test (inside image)') {
+      steps {
+        // server.py is in the image WORKDIR /app
+        sh 'docker run --rm $APP_NAME:ci python -m py_compile server.py'
       }
     }
 
@@ -70,7 +68,7 @@ pipeline {
 
   post {
     success {
-      echo "Deployed successfully."
+      echo "Deployed successfully to http://${EC2_IP}:8080"
     }
   }
 }
