@@ -15,7 +15,9 @@ pipeline {
 
   stages {
     stage('Checkout') {
-      steps { checkout scm }
+      steps {
+        checkout scm
+      }
     }
 
     stage('Build Docker') {
@@ -26,7 +28,7 @@ pipeline {
 
     stage('Unit Test (inside image)') {
       steps {
-        // server.py is in the image WORKDIR /app
+        // Run a simple syntax check from inside the built image
         sh 'docker run --rm $APP_NAME:ci python -m py_compile server.py'
       }
     }
@@ -52,27 +54,27 @@ pipeline {
           def ecrRegistry = ECR_URI.split('/')[0]
           sshagent(credentials: ['ec2-ssh']) {
             sh """
-              ssh -o StrictHostKeyChecking=no ubuntu@${EC2_IP} 'set -eux
-                # make sure docker is up
+              ssh -o StrictHostKeyChecking=no ubuntu@${EC2_IP} "bash -lc 'set -eux
                 sudo systemctl enable --now docker || true
-    
-                # login to ECR and pull
-                aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | sudo docker login -u AWS --password-stdin ${ecrRegistry}
+                TOKEN=\\\$(aws ecr get-login-password --region ${AWS_DEFAULT_REGION})
+                sudo docker login --username AWS --password \\"\\\$TOKEN\\" ${ecrRegistry}
                 sudo docker pull ${ECR_URI}:latest
-    
-                # restart container
                 sudo docker rm -f ${APP_NAME} || true
                 sudo docker run -d -p 8080:8080 --restart unless-stopped --name ${APP_NAME} ${ECR_URI}:latest
-              '
+              '"
             """
           }
         }
       }
     }
+  }
 
   post {
     success {
       echo "Deployed successfully to http://${EC2_IP}:8080"
+    }
+    failure {
+      echo "Build failed. Open Console Output for details."
     }
   }
 }
