@@ -1,0 +1,69 @@
+pipeline {
+  agent any
+  environment {
+    APP_NAME = "helloapp"
+    TF_DIR   = "terraform"
+    AWS_DEFAULT_REGION = "ap-south-1"
+  }
+  options { timestamps() }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
+    }
+
+    stage('Unit Test') {
+      steps { sh 'python3 -m py_compile app/server.py' }
+    }
+
+    stage('Build Docker') {
+      steps { sh 'docker build -t $APP_NAME:ci ./app' }
+    }
+
+    stage('Login to ECR & Push') {
+      steps {
+        withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', credentialsId: 'aws-creds']]) {
+          script {
+            def ECR_URI = sh(script: "cd $TF_DIR && terraform output -raw ecr_repository_url", returnStdout: true).trim()
+            sh """
+              aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
+              docker login --username AWS --password-stdin ${ECR_URI%/*}
+              docker tag $APP_NAME:ci $ECR_URI:latest
+              docker push $ECR_URI:latest
+            """
+            env.ECR_URI = ECR_URI
+          }
+        }
+      }
+    }
+
+    stage('Deploy to EC2') {
+      steps {
+        script {
+          def PUBLIC_IP = sh(script: "cd $TF_DIR && terraform output -raw ec2_public_ip", returnStdout: true).trim()
+          sshagent (credentials: ['ec2-ssh']) {
+            sh """
+              ssh -o StrictHostKeyChecking=no ubuntu@${PUBLIC_IP} '
+                set -eux
+                TOKEN=$(aws ecr get-login-password --region ${AWS_DEFAULT_REGION})
+                docker login --username AWS --password $TOKEN ${env.ECR_URI%/*}
+                docker pull ${env.ECR_URI}:latest
+                docker rm -f helloapp || true
+                docker run -d -p 8080:8080 --restart unless-stopped --name helloapp ${env.ECR_URI}:latest
+              '
+            """
+          }
+        }
+      }
+    }
+  }
+
+  post {
+    success {
+      script {
+        def APP_URL = sh(script: "cd $TF_DIR && terraform output -raw app_url", returnStdout: true).trim()
+        echo "Deployed successfully. Visit: ${APP_URL}"
+      }
+    }
+  }
+}
