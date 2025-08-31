@@ -12,9 +12,6 @@ import socket, os
 #     port = int(os.getenv("PORT", "8080"))
 #     HTTPServer(("", port), Handler).serve_forever()
 
-from http.server import BaseHTTPRequestHandler, HTTPServer
-import socket, os
-
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
