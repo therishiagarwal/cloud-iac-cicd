@@ -53,18 +53,22 @@ pipeline {
           sshagent(credentials: ['ec2-ssh']) {
             sh """
               ssh -o StrictHostKeyChecking=no ubuntu@${EC2_IP} 'set -eux
-                TOKEN=\$(aws ecr get-login-password --region ${AWS_DEFAULT_REGION})
-                docker login --username AWS --password "\$TOKEN" ${ecrRegistry}
-                docker pull ${ECR_URI}:latest
-                docker rm -f ${APP_NAME} || true
-                docker run -d -p 8080:8080 --restart unless-stopped --name ${APP_NAME} ${ECR_URI}:latest
+                # make sure docker is up
+                sudo systemctl enable --now docker || true
+    
+                # login to ECR and pull
+                aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | sudo docker login -u AWS --password-stdin ${ecrRegistry}
+                sudo docker pull ${ECR_URI}:latest
+    
+                # restart container
+                sudo docker rm -f ${APP_NAME} || true
+                sudo docker run -d -p 8080:8080 --restart unless-stopped --name ${APP_NAME} ${ECR_URI}:latest
               '
             """
           }
         }
       }
     }
-  }
 
   post {
     success {
